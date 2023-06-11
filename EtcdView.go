@@ -108,6 +108,10 @@ func EtcdView() {
 		}
 		if combo != nil {
 			if len(keylist) > 200 {
+				msg := "too many data"
+				fmt.Println(msg)
+				myDialog := dialog.NewInformation("Notify", msg, w)
+				myDialog.Show()
 				combo.Options = keylist[:200]
 			} else {
 				combo.Options = keylist
@@ -172,6 +176,10 @@ func EtcdView() {
 	getButton := widget.NewButton("get", func() {
 		key := keyEntry.Text
 		if key == "" {
+			msg := "empty key"
+			fmt.Println(msg)
+			myDialog := dialog.NewError(errors.New(msg), w)
+			myDialog.Show()
 			return
 		}
 		cli, err := clientv3.New(clientv3.Config{
@@ -248,6 +256,10 @@ func EtcdView() {
 			options = append(options, string(kv.Key))
 		}
 		if len(options) > 200 {
+			msg := "too many data"
+			fmt.Println(msg)
+			myDialog := dialog.NewInformation("Notify", msg, w)
+			myDialog.Show()
 			combo.Options = options[:200]
 		} else {
 			combo.Options = options
