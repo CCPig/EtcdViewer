@@ -19,6 +19,8 @@ var client *clientv3.Client
 var kvs map[string]string
 var keylist []string
 
+const selectnum = 500
+
 func RefreshData() {
 	kvs = make(map[string]string)
 	keylist = keylist[:0]
@@ -107,12 +109,12 @@ func EtcdView() {
 			myDialog.Show()
 		}
 		if combo != nil {
-			if len(keylist) > 200 {
+			if len(keylist) > selectnum {
 				msg := "too many data"
 				fmt.Println(msg)
 				myDialog := dialog.NewInformation("Notify", msg, w)
 				myDialog.Show()
-				combo.Options = keylist[:200]
+				combo.Options = keylist[:selectnum]
 			} else {
 				combo.Options = keylist
 			}
@@ -158,8 +160,8 @@ func EtcdView() {
 	//})
 
 	combo = widget.NewSelect(func() []string {
-		if len(keylist) >= 200 {
-			return keylist[:200]
+		if len(keylist) >= selectnum {
+			return keylist[:selectnum]
 		} else {
 			return keylist
 		}
@@ -174,6 +176,7 @@ func EtcdView() {
 	//scrolledContainer.Resize(fyne.NewSize(100, 50))
 
 	getButton := widget.NewButton("get", func() {
+		combo.ClearSelected()
 		key := keyEntry.Text
 		if key == "" {
 			msg := "empty key"
@@ -203,7 +206,6 @@ func EtcdView() {
 		}
 		for _, kv := range resp.Kvs {
 			//fmt.Printf("键：%s，值：%s\n", kv.Key, kv.Value)
-			combo.ClearSelected()
 			combo.SetSelected(string(kv.Key))
 			pretty, _ := PrettyJsonStr(kv.Value)
 			label.SetText(string(pretty))
@@ -234,6 +236,7 @@ func EtcdView() {
 	//})
 
 	listButton := widget.NewButton("list", func() {
+		combo.ClearSelected()
 		cli, err := clientv3.New(clientv3.Config{
 			Endpoints:   []string{etcd.Text},
 			DialTimeout: 5 * time.Second,
@@ -249,21 +252,25 @@ func EtcdView() {
 			log.Println(err)
 			return
 		}
+		if len(kvs) == 0 {
+			return
+		}
 		fmt.Println("kvs size:", len(resp.Kvs))
 		options := []string{}
 		for _, kv := range resp.Kvs {
 			//fmt.Printf("键：%s，值：%s\n", kv.Key, kv.Value)
 			options = append(options, string(kv.Key))
 		}
-		if len(options) > 200 {
+		if len(options) > selectnum {
 			msg := "too many data"
 			fmt.Println(msg)
 			myDialog := dialog.NewInformation("Notify", msg, w)
 			myDialog.Show()
-			combo.Options = options[:200]
+			combo.Options = options[:selectnum]
 		} else {
 			combo.Options = options
 		}
+		combo.SetSelected(string(options[0]))
 	})
 	w.SetContent(container.NewVBox(
 		container.NewGridWithColumns(2,
