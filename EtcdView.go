@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"etcdviewer/utils"
 	"fmt"
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -12,6 +13,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 	"go.etcd.io/etcd/clientv3"
 	"log"
+	"strings"
 	"time"
 )
 
@@ -19,8 +21,10 @@ var client *clientv3.Client
 var kvs map[string]string
 var keylist []string
 var w fyne.Window
+var myApp fyne.App
 
 const selectnum = 300
+const etcdtimeout = 15
 
 func RefreshData() {
 	kvs = make(map[string]string)
@@ -30,24 +34,40 @@ func RefreshData() {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-	resp, err := client.Get(ctx, "", clientv3.WithPrefix())
-	cancel()
-	if err != nil {
-		msg := "etcd connect err"
-		fmt.Println(msg)
-		myDialog := dialog.NewError(errors.New(msg), w)
-		myDialog.Show()
-		return
-	}
-	if kvs == nil {
-		kvs = make(map[string]string, len(resp.Kvs))
-	}
-	for _, kv := range resp.Kvs {
-		kvs[string(kv.Key)] = string(kv.Value)
-		keylist = append(keylist, string(kv.Key))
-	}
-	fmt.Println("kvs size:", len(resp.Kvs))
+	progressBar := widget.NewProgressBarInfinite()
+	progressBar.Start()
+	size := fyne.NewSize(50, 10)
+	progressBar.Resize(size)
+	progressBar.Start()
+	loadProgress := myApp.NewWindow("数据加载中")
+
+	loadProgress.SetContent(progressBar)
+	loadProgress.Resize(size)
+	go func() {
+		loadProgress.FullScreen()
+		loadProgress.CenterOnScreen()
+		loadProgress.Show()
+		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+		resp, err := client.Get(ctx, "", clientv3.WithPrefix())
+		cancel()
+		if err != nil {
+			msg := "etcd connect err"
+			fmt.Println(msg)
+			myDialog := dialog.NewError(errors.New(msg), w)
+			myDialog.Show()
+			return
+		}
+		if kvs == nil {
+			kvs = make(map[string]string, len(resp.Kvs))
+		}
+		for _, kv := range resp.Kvs {
+			kvs[string(kv.Key)] = string(kv.Value)
+			keylist = append(keylist, string(kv.Key))
+		}
+		fmt.Println("kvs size:", len(resp.Kvs))
+		loadProgress.Close()
+	}()
+
 }
 
 func PrettyJsonStr(raw []byte) (pretty []byte, err error) {
@@ -66,9 +86,24 @@ func PrettyJsonStr(raw []byte) (pretty []byte, err error) {
 }
 
 func Init(endpoints []string) bool {
+	var eps []string
+	for _, ep := range endpoints {
+		vec := strings.Split(ep, ":")
+		if len(vec) != 2 {
+			continue
+		}
+		if !utils.CheckNet(vec[0], vec[1]) {
+			continue
+		} else {
+			eps = append(eps, ep)
+		}
+	}
+	if len(eps) == 0 {
+		return false
+	}
 	cli, err := clientv3.New(clientv3.Config{
-		Endpoints:   endpoints,
-		DialTimeout: 5 * time.Second,
+		Endpoints:   eps,
+		DialTimeout: etcdtimeout * time.Second,
 	})
 	if err != nil {
 		fmt.Println(err)
@@ -92,8 +127,15 @@ func Release() {
 	}
 }
 
+type EnterShort struct {
+}
+
+func (e EnterShort) ShortcutName() string {
+	return string(fyne.KeyEnter)
+}
+
 func EtcdView() {
-	myApp := app.New()
+	myApp = app.New()
 	t := &TestTheme{}
 	t.SetFonts("./simhei.ttf", "")
 	myApp.Settings().SetTheme(t)
@@ -108,10 +150,11 @@ func EtcdView() {
 	}
 	defer Release()
 
-	combo := &widget.Select{}
+	selectEntry := &widget.SelectEntry{}
 	etcd := widget.NewEntry()
 	etcd.SetText("10.242.100.33:2379")
-	etcd.OnChanged = func(s string) {
+	etcd.OnSubmitted = func(s string) {
+		endpoints = []string{etcd.Text}
 		fmt.Println("etcd change to ", etcd.Text)
 		if !Init([]string{s}) {
 			msg := "etcd connect err"
@@ -120,15 +163,15 @@ func EtcdView() {
 			myDialog.Show()
 			return
 		}
-		if combo != nil {
+		if selectEntry != nil {
 			if len(keylist) > selectnum {
 				msg := "too many data"
 				fmt.Println(msg)
 				myDialog := dialog.NewInformation("Notify", msg, w)
 				myDialog.Show()
-				combo.Options = keylist[:selectnum]
+				selectEntry.SetOptions(keylist[:selectnum])
 			} else {
-				combo.Options = keylist
+				selectEntry.SetOptions(keylist)
 			}
 		}
 	}
@@ -154,7 +197,7 @@ func EtcdView() {
 	//	}
 	//	cli, err := clientv3.New(clientv3.Config{
 	//		Endpoints:   endpoints,
-	//		DialTimeout: 5 * time.Second,
+	//		DialTimeout: etcdtimeout * time.Second,
 	//	})
 	//	if err != nil {
 	//		panic(err)
@@ -171,25 +214,28 @@ func EtcdView() {
 	//	valueEntry.SetText("")
 	//})
 
-	combo = widget.NewSelect(func() []string {
+	selectEntry = widget.NewSelectEntry(func() []string {
 		if len(keylist) >= selectnum {
 			return keylist[:selectnum]
 		} else {
 			return keylist
 		}
-	}(), func(value string) {
+	}())
+	selectEntry.OnChanged = func(value string) {
 		v := kvs[value]
 		log.Printf("%s:\n%s\n", value, v)
 		keyEntry.SetText(value)
 		pretty, _ := PrettyJsonStr([]byte(v))
 		label.SetText(string(pretty))
-	})
-	scrolledContainer := container.NewVScroll(combo)
+	}
+
+	scrolledContainer := container.NewVScroll(selectEntry)
 	//scrolledContainer.Resize(fyne.NewSize(100, 50))
 
-	getButton := widget.NewButton("get", func() {
+	keyEntry.OnSubmitted = func(s string) {
+
 		key := keyEntry.Text
-		combo.ClearSelected()
+		selectEntry.Text = ""
 		if key == "" {
 			msg := "empty key"
 			fmt.Println(msg)
@@ -199,7 +245,7 @@ func EtcdView() {
 		}
 		cli, err := clientv3.New(clientv3.Config{
 			Endpoints:   endpoints,
-			DialTimeout: 5 * time.Second,
+			DialTimeout: etcdtimeout * time.Second,
 		})
 		if err != nil {
 			msg := "etcd connect err"
@@ -222,11 +268,11 @@ func EtcdView() {
 		}
 		for _, kv := range resp.Kvs {
 			//fmt.Printf("键：%s，值：%s\n", kv.Key, kv.Value)
-			combo.SetSelected(string(kv.Key))
+			selectEntry.SetText(string(kv.Key))
 			pretty, _ := PrettyJsonStr(kv.Value)
 			label.SetText(string(pretty))
 		}
-	})
+	}
 	//deleteButton := widget.NewButton("delete", func() {
 	//	key := keyEntry.Text
 	//	if key == "" {
@@ -234,7 +280,7 @@ func EtcdView() {
 	//	}
 	//	cli, err := clientv3.New(clientv3.Config{
 	//		Endpoints:   endpoints,
-	//		DialTimeout: 5 * time.Second,
+	//		DialTimeout: etcdtimeout * time.Second,
 	//	})
 	//	if err != nil {
 	//		panic(err)
@@ -251,11 +297,12 @@ func EtcdView() {
 	//	valueEntry.SetText("")
 	//})
 
-	listButton := widget.NewButton("list", func() {
-		combo.ClearSelected()
+	//listButton := widget.NewButton("list", func() {
+	prefixEntry.OnSubmitted = func(s string) {
+		selectEntry.Text = ""
 		cli, err := clientv3.New(clientv3.Config{
 			Endpoints:   []string{etcd.Text},
-			DialTimeout: 5 * time.Second,
+			DialTimeout: etcdtimeout * time.Second,
 		})
 		if err != nil {
 			msg := "etcd connect err"
@@ -276,6 +323,9 @@ func EtcdView() {
 			return
 		}
 		fmt.Println("kvs size:", len(resp.Kvs))
+		if len(resp.Kvs) == 0 {
+			return
+		}
 		options := []string{}
 		for _, kv := range resp.Kvs {
 			//fmt.Printf("键：%s，值：%s\n", kv.Key, kv.Value)
@@ -286,12 +336,13 @@ func EtcdView() {
 			fmt.Println(msg)
 			myDialog := dialog.NewInformation("Notify", msg, w)
 			myDialog.Show()
-			combo.Options = options[:selectnum]
+			selectEntry.SetOptions(options[:selectnum])
 		} else {
-			combo.Options = options
+			selectEntry.SetOptions(options)
 		}
-		combo.SetSelected(string(options[0]))
-	})
+		selectEntry.SetText(string(options[0]))
+	}
+
 	w.SetContent(container.NewVBox(
 		container.NewGridWithColumns(2,
 			widget.NewLabel("etcd:"),
@@ -303,17 +354,12 @@ func EtcdView() {
 			widget.NewLabel("prefix:"),
 			prefixEntry,
 		),
-		container.NewHBox(
-			//addButton,
-			getButton,
-			//deleteButton,
-			listButton,
-		),
 		scrolledContainer,
 		labelScroll,
 		//labelContainer,
 		//labelBox,
 	))
 	w.Resize(fyne.NewSize(1000, 800))
+	w.CenterOnScreen()
 	w.ShowAndRun()
 }
