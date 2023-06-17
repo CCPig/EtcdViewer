@@ -18,8 +18,9 @@ import (
 var client *clientv3.Client
 var kvs map[string]string
 var keylist []string
+var w fyne.Window
 
-const selectnum = 500
+const selectnum = 300
 
 func RefreshData() {
 	kvs = make(map[string]string)
@@ -29,11 +30,15 @@ func RefreshData() {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	resp, err := client.Get(ctx, "", clientv3.WithPrefix())
 	cancel()
 	if err != nil {
-		panic(err)
+		msg := "etcd connect err"
+		fmt.Println(msg)
+		myDialog := dialog.NewError(errors.New(msg), w)
+		myDialog.Show()
+		return
 	}
 	if kvs == nil {
 		kvs = make(map[string]string, len(resp.Kvs))
@@ -67,6 +72,10 @@ func Init(endpoints []string) bool {
 	})
 	if err != nil {
 		fmt.Println(err)
+		msg := "etcd connect err"
+		fmt.Println(msg)
+		myDialog := dialog.NewError(errors.New(msg), w)
+		myDialog.Show()
 		return false
 	}
 	client = cli
@@ -85,9 +94,11 @@ func Release() {
 
 func EtcdView() {
 	myApp := app.New()
-	// 获取当前主题
-	//myApp.Settings().SetTheme(&MyTheme{})
-	w := myApp.NewWindow("Etcd可视化工具")
+	t := &TestTheme{}
+	t.SetFonts("./simhei.ttf", "")
+	myApp.Settings().SetTheme(t)
+
+	w = myApp.NewWindow("Etcd可视化工具")
 	endpoints := []string{"10.242.100.33:2379"}
 	if !Init(endpoints) {
 		msg := "etcd connect err"
@@ -107,6 +118,7 @@ func EtcdView() {
 			fmt.Println(msg)
 			myDialog := dialog.NewError(errors.New(msg), w)
 			myDialog.Show()
+			return
 		}
 		if combo != nil {
 			if len(keylist) > selectnum {
@@ -176,8 +188,8 @@ func EtcdView() {
 	//scrolledContainer.Resize(fyne.NewSize(100, 50))
 
 	getButton := widget.NewButton("get", func() {
-		combo.ClearSelected()
 		key := keyEntry.Text
+		combo.ClearSelected()
 		if key == "" {
 			msg := "empty key"
 			fmt.Println(msg)
@@ -190,7 +202,11 @@ func EtcdView() {
 			DialTimeout: 5 * time.Second,
 		})
 		if err != nil {
-			panic(err)
+			msg := "etcd connect err"
+			fmt.Println(msg)
+			myDialog := dialog.NewError(errors.New(msg), w)
+			myDialog.Show()
+			return
 		}
 		defer cli.Close()
 
@@ -242,7 +258,11 @@ func EtcdView() {
 			DialTimeout: 5 * time.Second,
 		})
 		if err != nil {
-			panic(err)
+			msg := "etcd connect err"
+			fmt.Println(msg)
+			myDialog := dialog.NewError(errors.New(msg), w)
+			myDialog.Show()
+			return
 		}
 		defer cli.Close()
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
