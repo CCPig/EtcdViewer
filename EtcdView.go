@@ -22,9 +22,11 @@ var kvs map[string]string
 var keylist []string
 var w fyne.Window
 var myApp fyne.App
+var selectEntry *widget.SelectEntry
 
 const selectnum = 300
 const etcdtimeout = 15
+const textsize = 20
 
 func RefreshData() {
 	kvs = make(map[string]string)
@@ -65,6 +67,15 @@ func RefreshData() {
 			keylist = append(keylist, string(kv.Key))
 		}
 		fmt.Println("kvs size:", len(resp.Kvs))
+		if len(keylist) != 0 {
+			selectEntry.SetOptions(func() []string {
+				if len(keylist) > selectnum {
+					return keylist[:selectnum]
+				} else {
+					return keylist
+				}
+			}())
+		}
 		loadProgress.Close()
 	}()
 
@@ -135,12 +146,17 @@ func (e EnterShort) ShortcutName() string {
 }
 
 func EtcdView() {
+	//err := os.Setenv("FYNE_SCALE", "1.2")
+	//if err != nil {
+	//	return
+	//}
 	myApp = app.New()
 	t := &TestTheme{}
 	t.SetFonts("./simhei.ttf", "")
 	myApp.Settings().SetTheme(t)
 
 	w = myApp.NewWindow("Etcd可视化工具")
+	w.Resize(fyne.NewSize(500, 300))
 	endpoints := []string{"10.242.100.33:2379"}
 	if !Init(endpoints) {
 		msg := "etcd connect err"
@@ -150,7 +166,7 @@ func EtcdView() {
 	}
 	defer Release()
 
-	selectEntry := &widget.SelectEntry{}
+	selectEntry = &widget.SelectEntry{}
 	etcd := widget.NewEntry()
 	etcd.SetText("10.242.100.33:2379")
 	etcd.OnSubmitted = func(s string) {
@@ -330,6 +346,7 @@ func EtcdView() {
 		for _, kv := range resp.Kvs {
 			//fmt.Printf("键：%s，值：%s\n", kv.Key, kv.Value)
 			options = append(options, string(kv.Key))
+			kvs[string(kv.Key)] = string(kv.Value)
 		}
 		if len(options) > selectnum {
 			msg := "too many data"
@@ -345,13 +362,13 @@ func EtcdView() {
 
 	w.SetContent(container.NewVBox(
 		container.NewGridWithColumns(2,
-			widget.NewLabel("etcd:"),
+			widget.NewLabel("Etcd:"),
 			etcd,
-			widget.NewLabel("key:"),
+			widget.NewLabel("Key:"),
 			keyEntry,
 			//widget.NewLabel("value:"),
 			//valueEntry,
-			widget.NewLabel("prefix:"),
+			widget.NewLabel("Prefix:"),
 			prefixEntry,
 		),
 		scrolledContainer,
@@ -359,7 +376,6 @@ func EtcdView() {
 		//labelContainer,
 		//labelBox,
 	))
-	w.Resize(fyne.NewSize(1000, 800))
 	w.CenterOnScreen()
 	w.ShowAndRun()
 }
