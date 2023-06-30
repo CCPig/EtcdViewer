@@ -280,6 +280,7 @@ func EtcdView() {
 		}
 		if len(resp.Kvs) == 0 {
 			fmt.Println("键不存在")
+			label.SetText("")
 			return
 		}
 		for _, kv := range resp.Kvs {
