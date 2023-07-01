@@ -341,6 +341,9 @@ func EtcdView() {
 		}
 		fmt.Println("kvs size:", len(resp.Kvs))
 		if len(resp.Kvs) == 0 {
+			selectEntry.SetText("")
+			selectEntry.SetOptions([]string{})
+			label.SetText("")
 			return
 		}
 		options := []string{}
