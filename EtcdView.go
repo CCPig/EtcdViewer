@@ -50,7 +50,7 @@ func RefreshData() {
 		loadProgress.CenterOnScreen()
 		loadProgress.Show()
 		ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-		resp, err := client.Get(ctx, "", clientv3.WithPrefix())
+		resp, err := client.Get(ctx, "Taurus/Router/", clientv3.WithPrefix())
 		cancel()
 		if err != nil {
 			msg := "etcd connect err"
@@ -61,6 +61,9 @@ func RefreshData() {
 		}
 		if kvs == nil {
 			kvs = make(map[string]string, len(resp.Kvs))
+		}
+		if len(resp.Kvs) == 0 {
+			return
 		}
 		for _, kv := range resp.Kvs {
 			kvs[string(kv.Key)] = string(kv.Value)
@@ -125,7 +128,7 @@ func Init(endpoints []string) bool {
 		return false
 	}
 	client = cli
-	RefreshData()
+	//RefreshData()
 	return true
 }
 
@@ -155,7 +158,7 @@ func EtcdView() {
 	t.SetFonts("./simhei.ttf", "")
 	myApp.Settings().SetTheme(t)
 
-	w = myApp.NewWindow("Etcd可视化工具")
+	w = myApp.NewWindow("KsfCache可视化工具")
 	w.Resize(fyne.NewSize(500, 300))
 	endpoints := []string{"10.242.100.33:2379"}
 	if !Init(endpoints) {
@@ -171,9 +174,9 @@ func EtcdView() {
 	etcd.SetText("10.242.100.33:2379")
 	etcd.OnSubmitted = func(s string) {
 		endpoints = []string{etcd.Text}
-		fmt.Println("etcd change to ", etcd.Text)
+		fmt.Println("KsfCache change to ", etcd.Text)
 		if !Init([]string{s}) {
-			msg := "etcd connect err"
+			msg := "KsfCache connect err"
 			fmt.Println(msg)
 			myDialog := dialog.NewError(errors.New(msg), w)
 			myDialog.Show()
@@ -192,44 +195,10 @@ func EtcdView() {
 		}
 	}
 	keyEntry := widget.NewEntry()
-	//valueEntry := widget.NewEntry()
 	prefixEntry := widget.NewEntry()
-	prefixEntry.SetText("Taurus/SR/TaskParam")
-	label := widget.NewLabelWithStyle("", fyne.TextAlignLeading, fyne.TextStyle{
-		Bold:      false,
-		Italic:    true,
-		Monospace: true,
-		Symbol:    false,
-		TabWidth:  4,
-	})
-	labelScroll := container.NewVScroll(label)
+	resultEntry := widget.NewMultiLineEntry()
+	labelScroll := container.NewVScroll(resultEntry)
 	labelScroll.SetMinSize(fyne.NewSize(800, 700))
-	//labelBox := container.NewWithoutLayout(labelContainer)
-	//addButton := widget.NewButton("put", func() {
-	//	key := keyEntry.Text
-	//	value := valueEntry.Text
-	//	if key == "" || value == "" {
-	//		return
-	//	}
-	//	cli, err := clientv3.New(clientv3.Config{
-	//		Endpoints:   endpoints,
-	//		DialTimeout: etcdtimeout * time.Second,
-	//	})
-	//	if err != nil {
-	//		panic(err)
-	//	}
-	//	defer cli.Close()
-	//
-	//	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	//	_, err = cli.Put(ctx, key, value)
-	//	cancel()
-	//	if err != nil {
-	//		panic(err)
-	//	}
-	//	keyEntry.SetText("")
-	//	valueEntry.SetText("")
-	//})
-
 	selectEntry = widget.NewSelectEntry(func() []string {
 		if len(keylist) >= selectnum {
 			return keylist[:selectnum]
@@ -242,7 +211,7 @@ func EtcdView() {
 		log.Printf("%s:\n%s\n", value, v)
 		keyEntry.SetText(value)
 		pretty, _ := PrettyJsonStr([]byte(v))
-		label.SetText(string(pretty))
+		resultEntry.SetText(string(pretty))
 	}
 
 	scrolledContainer := container.NewVScroll(selectEntry)
@@ -280,41 +249,17 @@ func EtcdView() {
 		}
 		if len(resp.Kvs) == 0 {
 			fmt.Println("键不存在")
-			label.SetText("")
+			resultEntry.SetText("")
 			return
 		}
 		for _, kv := range resp.Kvs {
 			//fmt.Printf("键：%s，值：%s\n", kv.Key, kv.Value)
 			selectEntry.SetText(string(kv.Key))
 			pretty, _ := PrettyJsonStr(kv.Value)
-			label.SetText(string(pretty))
+			resultEntry.SetText(string(pretty))
 		}
 	}
-	//deleteButton := widget.NewButton("delete", func() {
-	//	key := keyEntry.Text
-	//	if key == "" {
-	//		return
-	//	}
-	//	cli, err := clientv3.New(clientv3.Config{
-	//		Endpoints:   endpoints,
-	//		DialTimeout: etcdtimeout * time.Second,
-	//	})
-	//	if err != nil {
-	//		panic(err)
-	//	}
-	//	defer cli.Close()
-	//
-	//	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	//	_, err = cli.Delete(ctx, key)
-	//	cancel()
-	//	if err != nil {
-	//		panic(err)
-	//	}
-	//	keyEntry.SetText("")
-	//	valueEntry.SetText("")
-	//})
 
-	//listButton := widget.NewButton("list", func() {
 	prefixEntry.OnSubmitted = func(s string) {
 		selectEntry.Text = ""
 		cli, err := clientv3.New(clientv3.Config{
@@ -336,20 +281,20 @@ func EtcdView() {
 			log.Println(err)
 			return
 		}
-		if len(kvs) == 0 {
-			return
-		}
 		fmt.Println("kvs size:", len(resp.Kvs))
 		if len(resp.Kvs) == 0 {
 			selectEntry.SetText("")
 			selectEntry.SetOptions([]string{})
-			label.SetText("")
+			resultEntry.SetText("")
 			return
 		}
 		options := []string{}
 		for _, kv := range resp.Kvs {
 			//fmt.Printf("键：%s，值：%s\n", kv.Key, kv.Value)
 			options = append(options, string(kv.Key))
+			if kvs == nil {
+				kvs = make(map[string]string)
+			}
 			kvs[string(kv.Key)] = string(kv.Value)
 		}
 		if len(options) > selectnum {
@@ -366,7 +311,7 @@ func EtcdView() {
 
 	w.SetContent(container.NewVBox(
 		container.NewGridWithColumns(2,
-			widget.NewLabel("Etcd:"),
+			widget.NewLabel("Endpoint:"),
 			etcd,
 			widget.NewLabel("Key:"),
 			keyEntry,
