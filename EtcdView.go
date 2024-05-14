@@ -210,8 +210,12 @@ func EtcdView() {
 		v := kvs[value]
 		log.Printf("%s:\n%s\n", value, v)
 		keyEntry.SetText(value)
-		pretty, _ := PrettyJsonStr([]byte(v))
-		resultEntry.SetText(string(pretty))
+		pretty, err := PrettyJsonStr([]byte(v))
+		if err != nil {
+			resultEntry.SetText(v)
+		} else {
+			resultEntry.SetText(string(pretty))
+		}
 	}
 
 	scrolledContainer := container.NewVScroll(selectEntry)
@@ -255,8 +259,12 @@ func EtcdView() {
 		for _, kv := range resp.Kvs {
 			//fmt.Printf("键：%s，值：%s\n", kv.Key, kv.Value)
 			selectEntry.SetText(string(kv.Key))
-			pretty, _ := PrettyJsonStr(kv.Value)
-			resultEntry.SetText(string(pretty))
+			pretty, err := PrettyJsonStr(kv.Value)
+			if err == nil {
+				resultEntry.SetText(string(pretty))
+			} else {
+				resultEntry.SetText(string(kv.Value))
+			}
 		}
 	}
 
