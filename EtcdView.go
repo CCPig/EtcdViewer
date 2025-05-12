@@ -207,7 +207,14 @@ func EtcdView() {
 		}
 	}())
 	selectEntry.OnChanged = func(value string) {
-		v := kvs[value]
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		rsp, err := client.Get(ctx, value)
+		if err != nil {
+			log.Println(err)
+			return
+		}
+		v := string(rsp.Kvs[0].Value)
 		log.Printf("%s:\n%s\n", value, v)
 		keyEntry.SetText(value)
 		pretty, err := PrettyJsonStr([]byte(v))
@@ -283,7 +290,7 @@ func EtcdView() {
 		}
 		defer cli.Close()
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		resp, err := cli.Get(ctx, prefixEntry.Text, clientv3.WithPrefix())
+		resp, err := cli.Get(ctx, prefixEntry.Text, clientv3.WithPrefix(), clientv3.WithKeysOnly())
 		cancel()
 		if err != nil {
 			log.Println(err)
